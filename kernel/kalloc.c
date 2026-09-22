@@ -81,9 +81,6 @@ kalloc(void)
   return (void *)r;
 }
 
-//------------------------------------------------------------------------------------------
-
-// funcion para obtener las paginas libres de memoria
 uint64
 kfreepages(void)
 {
@@ -98,5 +95,3 @@ kfreepages(void)
   release(&kmem.lock);//libera el lock del kmem
   return count;//devuelve el numero de paginas libres
 }
-
-//------------------------------------------------------------------------------------------

@@ -60,7 +60,6 @@ void            ireclaim(int);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
-
 //------------------------------------------------------------------------------------------
 uint64          kfreepages(void); //funcion para contar el numero de paginas libres
 //------------------------------------------------------------------------------------------
@@ -96,18 +95,17 @@ void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            procinit(void);
+//------------------------------------------------------------------------------------------
+uint64          nrunnable(void); //funcion para contar el numero de procesos RUNNABLE
+//------------------------------------------------------------------------------------------
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
-void            sleep(void*, struct spinlock*);
+void            sleep_prepare(void*);
+void            sleep(void);
 void            userinit(void);
 int             kwait(uint64);
 void            wakeup(void*);
 void            yield(void);
-
-//------------------------------------------------------------------------------------------
-uint64          nrunnable(void); //funcion para contar el numero de procesos RUNNABLE
-//------------------------------------------------------------------------------------------
-
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
@@ -145,6 +143,7 @@ void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
+int             syscall_num_from_name(char*);
 
 // trap.c
 extern uint     ticks;
@@ -173,11 +172,11 @@ void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
-int             copyout(pagetable_t, uint64, char *, uint64);
-int             copyin(pagetable_t, char *, uint64, uint64);
-int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             copyout(pagetable_t, uint64, uint64, char *, uint64);
+int             copyin(pagetable_t, uint64, char *, uint64, uint64);
+int             copyinstr(pagetable_t, uint64, char *, uint64, uint64);
 int             ismapped(pagetable_t, uint64);
-uint64          vmfault(pagetable_t, uint64, int);
+uint64          vmfault(pagetable_t, uint64, uint64, int);
 
 // plic.c
 void            plicinit(void);

@@ -1,10 +1,7 @@
 #define SBRK_ERROR ((char *)-1)
 
 struct stat;
-
-//------------------------------------------------------------------------------------------
 struct sysinfo; // estructura para almacenar información del sistema
-//------------------------------------------------------------------------------------------
 
 // system calls
 int fork(void);
@@ -29,10 +26,8 @@ char *sys_sbrk(int, int);
 int pause(int);
 int uptime(void);
 int sync(void);
-
-//------------------------------------------------------------------------------------------
+int trace(const char*);
 int sysinfo(struct sysinfo *); //funcion para obtener info del sistema
-//------------------------------------------------------------------------------------------
 
 // ulib.c
 int stat(const char *, struct stat *);

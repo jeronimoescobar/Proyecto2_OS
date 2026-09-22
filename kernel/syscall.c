@@ -15,7 +15,7 @@ fetchaddr(uint64 addr, uint64 *ip)
   if (addr >= p->sz ||
       addr + sizeof(uint64) > p->sz) // both tests needed, in case of overflow
     return -1;
-  if (copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
+  if (copyin(p->pagetable, p->sz, (char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
   return 0;
 }
@@ -26,7 +26,7 @@ int
 fetchstr(uint64 addr, char *buf, int max)
 {
   struct proc *p = myproc();
-  if (copyinstr(p->pagetable, buf, addr, max) < 0)
+  if (copyinstr(p->pagetable, p->sz, buf, addr, max) < 0)
     return -1;
   return strlen(buf);
 }
@@ -103,6 +103,7 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_sync(void);
+extern uint64 sys_trace(void);
 
 //------------------------------------------------------------------------------------------
 extern uint64 sys_sysinfo(void); //declaración de la función sys_sysinfo
@@ -110,37 +111,78 @@ extern uint64 sys_sysinfo(void); //declaración de la función sys_sysinfo
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
-static uint64 (*syscalls[])(void) = { //areglo de punteros a las funciones que manejan las syscalss
+static uint64 (*syscalls[])(void) = {
   // clang-format off
-  [SYS_fork]    sys_fork,
-  [SYS_exit]    sys_exit,
-  [SYS_wait]    sys_wait,
-  [SYS_pipe]    sys_pipe,
-  [SYS_read]    sys_read,
-  [SYS_kill]    sys_kill,
-  [SYS_exec]    sys_exec,
-  [SYS_fstat]   sys_fstat,
-  [SYS_chdir]   sys_chdir,
-  [SYS_dup]     sys_dup,
-  [SYS_getpid]  sys_getpid,
-  [SYS_sbrk]    sys_sbrk,
-  [SYS_pause]   sys_pause,
-  [SYS_uptime]  sys_uptime,
-  [SYS_open]    sys_open,
-  [SYS_write]   sys_write,
-  [SYS_mknod]   sys_mknod,
-  [SYS_unlink]  sys_unlink,
-  [SYS_link]    sys_link,
-  [SYS_mkdir]   sys_mkdir,
-  [SYS_close]   sys_close,
-  [SYS_sync]    sys_sync,
+  [SYS_fork]    = sys_fork,
+  [SYS_exit]    = sys_exit,
+  [SYS_wait]    = sys_wait,
+  [SYS_pipe]    = sys_pipe,
+  [SYS_read]    = sys_read,
+  [SYS_kill]    = sys_kill,
+  [SYS_exec]    = sys_exec,
+  [SYS_fstat]   = sys_fstat,
+  [SYS_chdir]   = sys_chdir,
+  [SYS_dup]     = sys_dup,
+  [SYS_getpid]  = sys_getpid,
+  [SYS_sbrk]    = sys_sbrk,
+  [SYS_pause]   = sys_pause,
+  [SYS_uptime]  = sys_uptime,
+  [SYS_open]    = sys_open,
+  [SYS_write]   = sys_write,
+  [SYS_mknod]   = sys_mknod,
+  [SYS_unlink]  = sys_unlink,
+  [SYS_link]    = sys_link,
+  [SYS_mkdir]   = sys_mkdir,
+  [SYS_close]   = sys_close,
+  [SYS_sync]    = sys_sync,
+  [SYS_trace]   = sys_trace,
 
   //------------------------------------------------------------------------------------------
-  [SYS_sysinfo] sys_sysinfo,//23 para identificar la llamada al sistema sysinfo
+  [SYS_sysinfo] = sys_sysinfo,//23 para identificar la llamada al sistema sysinfo
   //------------------------------------------------------------------------------------------
-
   // clang-format on
 };
+
+// Nombre legible de cada system call, indexado por numero de syscall.
+static char *syscall_names[] = {
+  // clang-format off
+  [SYS_fork]    = "sys_fork",
+  [SYS_exit]    = "sys_exit",
+  [SYS_wait]    = "sys_wait",
+  [SYS_pipe]    = "sys_pipe",
+  [SYS_read]    = "sys_read",
+  [SYS_kill]    = "sys_kill",
+  [SYS_exec]    = "sys_exec",
+  [SYS_fstat]   = "sys_fstat",
+  [SYS_chdir]   = "sys_chdir",
+  [SYS_dup]     = "sys_dup",
+  [SYS_getpid]  = "sys_getpid",
+  [SYS_sbrk]    = "sys_sbrk",
+  [SYS_pause]   = "sys_pause",
+  [SYS_uptime]  = "sys_uptime",
+  [SYS_open]    = "sys_open",
+  [SYS_write]   = "sys_write",
+  [SYS_mknod]   = "sys_mknod",
+  [SYS_unlink]  = "sys_unlink",
+  [SYS_link]    = "sys_link",
+  [SYS_mkdir]   = "sys_mkdir",
+  [SYS_close]   = "sys_close",
+  [SYS_sync]    = "sys_sync",
+  [SYS_trace]   = "sys_trace",
+  [SYS_sysinfo] = "sys_sysinfo",
+  // clang-format on
+};
+
+// Traduce un nombre ("sys_kill") a su numero de syscall. -1 si no existe.
+int
+syscall_num_from_name(char *name)
+{
+  for (int i = 1; i < NELEM(syscall_names); i++) {
+    if (syscall_names[i] && strncmp(syscall_names[i], name, 16) == 0)
+      return i;
+  }
+  return -1;
+}
 
 void
 syscall(void)
@@ -152,7 +194,22 @@ syscall(void)
   if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
+    // Guardamos los registros de argumento antes de que a0 sea sobrescrito.
+    uint64 arg0 = p->trapframe->a0;
+    uint64 arg1 = p->trapframe->a1;
+
     p->trapframe->a0 = syscalls[num]();
+
+    // trace: reportar esta syscall si el proceso pidio monitorearla.
+    if (p->tracing == num) {
+      printk("PID: %d\n", p->pid);
+      printk("SYSCALL: %s\n", syscall_names[num]);
+      printk("RETURN: %ld\n", p->trapframe->a0);
+      printk("s0: 0x%lx\n", p->trapframe->s0);
+      printk("s1: 0x%lx\n", p->trapframe->s1);
+      printk("a0: 0x%lx\n", arg0);
+      printk("a1: 0x%lx\n", arg1);
+    }
   } else {
     printk("%d %s: unknown sys call %d\n", p->pid, p->name, num);
     p->trapframe->a0 = -1;

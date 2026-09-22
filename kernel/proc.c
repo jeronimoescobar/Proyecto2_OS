@@ -26,27 +26,6 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
-//------------------------------------------------------------------------------------------
-// Parte agregada para contar el numero de procesos RUNNABLE
-uint64
-nrunnable(void)
-{
-  uint64 count; // variable para contar el numero de procesos
-  struct proc *p; // puntero a la estructura de proceso
-
-  count = 0;
-
-  for (p = proc; p < &proc[NPROC]; p++) { // recorre la tabla de procesos
-    acquire(&p->lock); // adquiere el lock del proceso
-    if (p->state == RUNNABLE) // si el proceso está en estado RUNNABLE
-      count++;
-    release(&p->lock); // libera el lock del proceso
-  }
-  return count; // retorna el numero de procesos RUNNABLE
-}
-
-//------------------------------------------------------------------------------------------
-
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
@@ -145,6 +124,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->tracing = -1;  
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0) {
@@ -184,11 +164,11 @@ freeproc(struct proc *p)
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
-  p->parent = 0;
   p->name[0] = 0;
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->tracing = -1;
   p->state = UNUSED;
 }
 
@@ -311,6 +291,9 @@ kfork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  // el hijo hereda el rastreo del padre
+  np->tracing = p->tracing;
+
   pid = np->pid;
 
   release(&np->lock);
@@ -409,12 +392,14 @@ kwait(uint64 addr)
         if (pp->state == ZOMBIE) {
           // Found one.
           pid = pp->pid;
-          if (addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                   sizeof(pp->xstate)) < 0) {
+          if (addr != 0 &&
+              copyout(p->pagetable, p->sz, addr, (char *)&pp->xstate,
+                      sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
             release(&wait_lock);
             return -1;
           }
+          pp->parent = 0;
           freeproc(pp);
           release(&pp->lock);
           release(&wait_lock);
@@ -431,7 +416,10 @@ kwait(uint64 addr)
     }
 
     // Wait for a child to exit.
-    sleep(p, &wait_lock); //DOC: wait-sleep
+    sleep_prepare(p); //DOC: wait-sleep
+    release(&wait_lock);
+    sleep();
+    acquire(&wait_lock);
   }
 }
 
@@ -468,6 +456,9 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
+
+        // Don't re-enable interrupts on release.
+        mycpu()->intena = 0;
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
@@ -533,15 +524,14 @@ forkret(void)
   // Still holding p->lock from scheduler.
   release(&p->lock);
 
-  if (first) {
+  if (__atomic_load_n(&first, __ATOMIC_ACQUIRE)) {
     // File system initialization must be run in the context of a
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
     fsinit(ROOTDEV);
 
-    first = 0;
     // ensure other cores see first=0.
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    __atomic_store_n(&first, 0, __ATOMIC_RELEASE);
 
     // We can invoke kexec() now that file system is initialized.
     // Put the return value (argc) of kexec into a0.
@@ -558,52 +548,55 @@ forkret(void)
   ((void (*)(uint64))trampoline_userret)(satp);
 }
 
-// Sleep on channel chan, releasing condition lock lk.
-// Re-acquires lk when awakened.
+// Register current process as waiting for wakeups on chan.
 void
-sleep(void *chan, struct spinlock *lk)
+sleep_prepare(void *chan)
 {
   struct proc *p = myproc();
 
-  // Must acquire p->lock in order to
-  // change p->state and then call sched.
-  // Once we hold p->lock, we can be
-  // guaranteed that we won't miss any wakeup
-  // (wakeup locks p->lock),
-  // so it's okay to release lk.
-
-  acquire(&p->lock); //DOC: sleeplock1
-  release(lk);
-
-  // Go to sleep.
+  acquire(&p->lock);
+  if (chan == 0)
+    panic("sleep_prepare: zero chan");
   p->chan = chan;
-  p->state = SLEEPING;
-
-  sched();
-
-  // Tidy up.
-  p->chan = 0;
-
-  // Reacquire original lock.
   release(&p->lock);
-  acquire(lk);
+}
+
+// Put the thread to sleep.  Assumes sleep_prepare() was called before.
+// If the channel registered by sleep_prepare() has been woken up in
+// the meantime, do not go to sleep, and instead return immediately.
+void
+sleep(void)
+{
+  struct proc *p = myproc();
+
+  acquire(&p->lock);
+  if (p->chan != 0) {
+    p->state = SLEEPING;
+    sched();
+  }
+  release(&p->lock);
 }
 
 // Wake up all processes sleeping on channel chan.
-// Caller should hold the condition lock.
 void
 wakeup(void *chan)
 {
   struct proc *p;
 
   for (p = proc; p < &proc[NPROC]; p++) {
-    if (p != myproc()) {
-      acquire(&p->lock);
-      if (p->state == SLEEPING && p->chan == chan) {
+    acquire(&p->lock);
+    if (p->chan == chan) {
+      // If the process is waiting for wakeups on this channel,
+      // signal that the wakeup happened by clearing p->chan.
+      p->chan = 0;
+
+      // If this waiting process has gotten so far as to actually
+      // go to sleep, also set it back to RUNNING.
+      if (p->state == SLEEPING) {
         p->state = RUNNABLE;
       }
-      release(&p->lock);
     }
+    release(&p->lock);
   }
 }
 
@@ -658,7 +651,7 @@ either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
 {
   struct proc *p = myproc();
   if (user_dst) {
-    return copyout(p->pagetable, dst, src, len);
+    return copyout(p->pagetable, p->sz, dst, src, len);
   } else {
     memmove((char *)dst, src, len);
     return 0;
@@ -673,7 +666,7 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 {
   struct proc *p = myproc();
   if (user_src) {
-    return copyin(p->pagetable, dst, src, len);
+    return copyin(p->pagetable, p->sz, dst, src, len);
   } else {
     memmove(dst, (char *)src, len);
     return 0;
@@ -688,12 +681,12 @@ procdump(void)
 {
   static char *states[] = {
     // clang-format off
-    [UNUSED]    "unused",
-    [USED]      "used",
-    [SLEEPING]  "sleep ",
-    [RUNNABLE]  "runble",
-    [RUNNING]   "run   ",
-    [ZOMBIE]    "zombie"
+    [UNUSED]    = "unused",
+    [USED]      = "used",
+    [SLEEPING]  = "sleep ",
+    [RUNNABLE]  = "runble",
+    [RUNNING]   = "run   ",
+    [ZOMBIE]    = "zombie"
     // clang-format on
   };
   struct proc *p;
@@ -710,4 +703,21 @@ procdump(void)
     printk("%d %s %s", p->pid, state, p->name);
     printk("\n");
   }
+}
+
+uint64
+nrunnable(void)
+{
+  uint64 count; // variable para contar el numero de procesos
+  struct proc *p; // puntero a la estructura de proceso
+
+  count = 0;
+
+  for (p = proc; p < &proc[NPROC]; p++) { // recorre la tabla de procesos
+    acquire(&p->lock); // adquiere el lock del proceso
+    if (p->state == RUNNABLE) // si el proceso está en estado RUNNABLE
+      count++;
+    release(&p->lock); // libera el lock del proceso
+  }
+  return count; // retorna el numero de procesos RUNNABLE
 }

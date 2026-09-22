@@ -9,6 +9,7 @@
 //------------------------------------------------------------------------------------------
 #include "sysinfo.h" // estructura para almacenar información del sistema
 //------------------------------------------------------------------------------------------
+
 uint64
 sys_exit(void)
 {
@@ -23,36 +24,6 @@ sys_getpid(void)
 {
   return myproc()->pid;
 }
-//------------------------------------------------------------------------------------------
-//funcion para obtener info del sistema
-
-uint64
-sys_sysinfo(void)
-{
-  uint64 addr;  //dirección de memoria del usuario donde se almacenará la información del sistema
-  uint64 total_pages; // total de paginas de memoria
-  uint64 free_pages; // n paginas libres
-  struct sysinfo info;
-  extern char end[];  // end de la memoria del kernel
-
-  
-  argaddr(0, &addr);  // obtener la dirección de memoria del usuario
-  total_pages = (PHYSTOP - PGROUNDUP((uint64)end)) / PGSIZE; // calcular el total de paginas de memoria
-  free_pages = kfreepages();
-  
-  // calcular la memoria libre en MB
-  info.free_memory_mb = free_pages * PGSIZE / (1024 * 1024);
-  info.used_pages = total_pages - free_pages;
-  info.available_pages = total_pages;
-  info.runnable_processes = nrunnable();
-
-  //si la copia de la info del sistema al espacio de usuario falla, devuelve -1
-  if (copyout(myproc()->pagetable, addr, (char *)&info, sizeof(info)) < 0)
-    return -1;
-  return 0;
-}
-
-//------------------------------------------------------------------------------------------
 
 uint64
 sys_fork(void)
@@ -112,7 +83,10 @@ sys_pause(void)
       release(&tickslock);
       return -1;
     }
-    sleep(&ticks, &tickslock);
+    sleep_prepare(&ticks);
+    release(&tickslock);
+    sleep();
+    acquire(&tickslock);
   }
   release(&tickslock);
   return 0;
@@ -138,4 +112,51 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+
+// trace(const char *name)
+// Pide al kernel monitorear la syscall llamada `name` (ej: "sys_kill")
+// para este proceso y sus hijos.
+// Retorna 0 si tuvo exito, -1 si el nombre no es una syscall valida.
+uint64
+sys_trace(void)
+{
+  char name[16];
+  int n;
+
+  if (argstr(0, name, sizeof(name)) < 0)   // copia segura de usuario a kernel
+    return -1;
+
+  if ((n = syscall_num_from_name(name)) < 0)
+    return -1;
+
+  myproc()->tracing = n;
+  return 0;
+}
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;  //dirección de memoria del usuario donde se almacenará la información del sistema
+  uint64 total_pages; // total de paginas de memoria
+  uint64 free_pages; // n paginas libres
+  struct sysinfo info;
+  extern char end[];  // end de la memoria del kernel
+
+  
+  argaddr(0, &addr);  // obtener la dirección de memoria del usuario
+  total_pages = (PHYSTOP - PGROUNDUP((uint64)end)) / PGSIZE; // calcular el total de paginas de memoria
+  free_pages = kfreepages();
+  
+  // calcular la memoria libre en MB
+  info.free_memory_mb = free_pages * PGSIZE / (1024 * 1024);
+  info.used_pages = total_pages - free_pages;
+  info.available_pages = total_pages;
+  info.runnable_processes = nrunnable();
+
+  //si la copia de la info del sistema al espacio de usuario falla, devuelve -1
+  if (copyout(myproc()->pagetable, myproc()->sz, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+  return 0;
 }
