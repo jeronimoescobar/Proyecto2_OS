@@ -1,0 +1,141 @@
+#include "types.h"
+#include "riscv.h"
+#include "defs.h"
+#include "param.h"
+#include "memlayout.h"
+#include "spinlock.h"
+#include "proc.h"
+#include "vm.h"
+//------------------------------------------------------------------------------------------
+#include "sysinfo.h" // estructura para almacenar información del sistema
+//------------------------------------------------------------------------------------------
+uint64
+sys_exit(void)
+{
+  int n;
+  argint(0, &n);
+  kexit(n);
+  return 0; // not reached
+}
+
+uint64
+sys_getpid(void)
+{
+  return myproc()->pid;
+}
+//------------------------------------------------------------------------------------------
+//funcion para obtener info del sistema
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;  //dirección de memoria del usuario donde se almacenará la información del sistema
+  uint64 total_pages; // total de paginas de memoria
+  uint64 free_pages; // n paginas libres
+  struct sysinfo info;
+  extern char end[];  // end de la memoria del kernel
+
+  
+  argaddr(0, &addr);  // obtener la dirección de memoria del usuario
+  total_pages = (PHYSTOP - PGROUNDUP((uint64)end)) / PGSIZE; // calcular el total de paginas de memoria
+  free_pages = kfreepages();
+  
+  // calcular la memoria libre en MB
+  info.free_memory_mb = free_pages * PGSIZE / (1024 * 1024);
+  info.used_pages = total_pages - free_pages;
+  info.available_pages = total_pages;
+  info.runnable_processes = nrunnable();
+
+  //si la copia de la info del sistema al espacio de usuario falla, devuelve -1
+  if (copyout(myproc()->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+  return 0;
+}
+
+//------------------------------------------------------------------------------------------
+
+uint64
+sys_fork(void)
+{
+  return kfork();
+}
+
+uint64
+sys_wait(void)
+{
+  uint64 p;
+  argaddr(0, &p);
+  return kwait(p);
+}
+
+uint64
+sys_sbrk(void)
+{
+  uint64 addr;
+  int t;
+  int n;
+
+  argint(0, &n);
+  argint(1, &t);
+  addr = myproc()->sz;
+
+  if (t == SBRK_EAGER || n < 0) {
+    if (growproc(n) < 0) {
+      return -1;
+    }
+  } else {
+    // Lazily allocate memory for this process: increase its memory
+    // size but don't allocate memory. If the processes uses the
+    // memory, vmfault() will allocate it.
+    if (addr + n < addr)
+      return -1;
+    if (addr + n > TRAPFRAME)
+      return -1;
+    myproc()->sz += n;
+  }
+  return addr;
+}
+
+uint64
+sys_pause(void)
+{
+  int n;
+  uint ticks0;
+
+  argint(0, &n);
+  if (n < 0)
+    n = 0;
+  acquire(&tickslock);
+  ticks0 = ticks;
+  while (ticks - ticks0 < n) {
+    if (killed(myproc())) {
+      release(&tickslock);
+      return -1;
+    }
+    sleep(&ticks, &tickslock);
+  }
+  release(&tickslock);
+  return 0;
+}
+
+uint64
+sys_kill(void)
+{
+  int pid;
+
+  argint(0, &pid);
+  return kkill(pid);
+}
+
+// return how many clock tick interrupts have occurred
+// since start.
+uint64
+sys_uptime(void)
+{
+  uint xticks;
+
+  acquire(&tickslock);
+  xticks = ticks;
+  release(&tickslock);
+  return xticks;
+}
