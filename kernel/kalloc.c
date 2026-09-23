@@ -81,9 +81,10 @@ kalloc(void)
   return (void *)r;
 }
 
-uint64
-kfreepages(void)
-{
+//------------------------------------------------------------------------------------------
+//funcion para obtener el numero de paginas libres
+uint64 kfreepages(void) {
+
   uint64 count; //contador de paginas libres
   struct run *r;
 

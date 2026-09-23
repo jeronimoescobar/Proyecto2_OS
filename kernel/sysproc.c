@@ -7,7 +7,7 @@
 #include "proc.h"
 #include "vm.h"
 //------------------------------------------------------------------------------------------
-#include "sysinfo.h" // estructura para almacenar información del sistema
+#include "sysinfo.h" // traer la struct para usarla en la función sys_sysinfo
 //------------------------------------------------------------------------------------------
 
 uint64
@@ -135,24 +135,29 @@ sys_trace(void)
   return 0;
 }
 
-uint64
-sys_sysinfo(void)
-{
-  uint64 addr;  //dirección de memoria del usuario donde se almacenará la información del sistema
-  uint64 total_pages; // total de paginas de memoria
-  uint64 free_pages; // n paginas libres
-  struct sysinfo info;
+
+//------------------------------------------------------------------------------------------
+//funcion para obtener info del sistema
+uint64 sys_sysinfo(void) {
+  
+  // variables
+  uint64 addr;  //dirección donde se almacenará la información del sistema
+  uint64 total_pages;
+  uint64 free_pages;
+
+  struct sysinfo info;  //instancia info de la struct sysinfo 
+  
   extern char end[];  // end de la memoria del kernel
 
-  
   argaddr(0, &addr);  // obtener la dirección de memoria del usuario
+
   total_pages = (PHYSTOP - PGROUNDUP((uint64)end)) / PGSIZE; // calcular el total de paginas de memoria
   free_pages = kfreepages();
-  
-  // calcular la memoria libre en MB
-  info.free_memory_mb = free_pages * PGSIZE / (1024 * 1024);
-  info.used_pages = total_pages - free_pages;
-  info.available_pages = total_pages;
+
+  info.free_memory = free_pages * PGSIZE / (1024 * 1024);  // calcular la memoria libre en MB
+  info.used_pages = total_pages - free_pages; 
+  info.total_pages = total_pages;
+  info.available_pages = free_pages;
   info.runnable_processes = nrunnable();
 
   //si la copia de la info del sistema al espacio de usuario falla, devuelve -1
