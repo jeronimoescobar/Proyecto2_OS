@@ -173,3 +173,7 @@ La consistencia del cálculo de páginas también se verificó:
 Used Pages + Available Pages = Total Pages
 200 + 32534 = 32734
 ```
+
+## Uso de IA 
+
+Para el desarrollo de este proyecto se utilizó IA para unir los códigos de trace y sysinfo ya que trabajamos en paralelo y tocábamos los mismos archivos, la usamos para combinarlos sin dañar el trabajo al subirlo a GitHub.
