@@ -14,7 +14,7 @@ main(void) {
   }
 
   // se imprime en la terminal la información del sistema obtenida
-  printf("Free Memory: %ld MB\n", info.free_memory_mb);
+  printf("Free Memory: %ld MB\n", info.free_memory);
   printf("Used Pages: %ld\n", info.used_pages);
   printf("Available Pages: %ld\n", info.available_pages);
   printf("Total Pages: %ld\n", info.total_pages);
