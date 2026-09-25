@@ -143,7 +143,7 @@ void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
-int             syscall_num_from_name(char*);
+int             syscall_num_from_name(char*); //traduce el nombre de una syscall a su numero
 
 // trap.c
 extern uint     ticks;

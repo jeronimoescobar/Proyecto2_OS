@@ -103,7 +103,7 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_sync(void);
-extern uint64 sys_trace(void);
+extern uint64 sys_trace(void); //declaracion de la funcion sys_trace
 
 //------------------------------------------------------------------------------------------
 extern uint64 sys_sysinfo(void); //declaración de la función sys_sysinfo
@@ -135,7 +135,7 @@ static uint64 (*syscalls[])(void) = {
   [SYS_mkdir]   = sys_mkdir,
   [SYS_close]   = sys_close,
   [SYS_sync]    = sys_sync,
-  [SYS_trace]   = sys_trace,
+  [SYS_trace]   = sys_trace,//24 para identificar la llamada al sistema trace
 
   //------------------------------------------------------------------------------------------
   [SYS_sysinfo] = sys_sysinfo,//23 para identificar la llamada al sistema sysinfo
@@ -143,7 +143,7 @@ static uint64 (*syscalls[])(void) = {
   // clang-format on
 };
 
-// Nombre legible de cada system call, indexado por numero de syscall.
+//tabla con el nombre de cada syscall, indexada por su numero
 static char *syscall_names[] = {
   // clang-format off
   [SYS_fork]    = "sys_fork",
@@ -173,11 +173,11 @@ static char *syscall_names[] = {
   // clang-format on
 };
 
-// Traduce un nombre ("sys_kill") a su numero de syscall. -1 si no existe.
+//recibe el nombre de una syscall y devuelve su numero, -1 si no existe
 int
 syscall_num_from_name(char *name)
 {
-  for (int i = 1; i < NELEM(syscall_names); i++) {
+  for (int i = 1; i < NELEM(syscall_names); i++) { //empieza en 1, el 0 no es syscall
     if (syscall_names[i] && strncmp(syscall_names[i], name, 16) == 0)
       return i;
   }
@@ -194,21 +194,19 @@ syscall(void)
   if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
-    // Guardamos los registros de argumento antes de que a0 sea sobrescrito.
-    uint64 arg0 = p->trapframe->a0;
-    uint64 arg1 = p->trapframe->a1;
+    uint64 arg0 = p->trapframe->a0; //se copia antes porque a0 traera el valor de retorno
+    uint64 arg1 = p->trapframe->a1; //segundo argumento de la syscall
 
     p->trapframe->a0 = syscalls[num]();
 
-    // trace: reportar esta syscall si el proceso pidio monitorearla.
-    if (p->tracing == num) {
-      printk("PID: %d\n", p->pid);
-      printk("SYSCALL: %s\n", syscall_names[num]);
-      printk("RETURN: %ld\n", p->trapframe->a0);
-      printk("s0: 0x%lx\n", p->trapframe->s0);
-      printk("s1: 0x%lx\n", p->trapframe->s1);
-      printk("a0: 0x%lx\n", arg0);
-      printk("a1: 0x%lx\n", arg1);
+    if (p->tracing == num) { //si es la syscall que el proceso pidio rastrear, se imprime
+      printk("PID: %d\n", p->pid);                //proceso que la ejecuto
+      printk("SYSCALL: %s\n", syscall_names[num]); //nombre de la syscall
+      printk("RETURN: %ld\n", p->trapframe->a0);   //valor que devolvio
+      printk("s0: 0x%lx\n", p->trapframe->s0);     //registro s0
+      printk("s1: 0x%lx\n", p->trapframe->s1);     //registro s1
+      printk("a0: 0x%lx\n", arg0);                 //primer argumento
+      printk("a1: 0x%lx\n", arg1);                 //segundo argumento
     }
   } else {
     printk("%d %s: unknown sys call %d\n", p->pid, p->name, num);

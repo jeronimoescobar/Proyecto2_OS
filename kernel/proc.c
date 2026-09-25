@@ -124,7 +124,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->tracing = -1;  
+  p->tracing = -1; //al crear el proceso no rastrea ninguna syscall
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0) {
@@ -168,7 +168,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
-  p->tracing = -1;
+  p->tracing = -1; //al liberar el proceso se limpia el rastreo
   p->state = UNUSED;
 }
 
@@ -291,8 +291,7 @@ kfork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
-  // el hijo hereda el rastreo del padre
-  np->tracing = p->tracing;
+  np->tracing = p->tracing; //el hijo hereda el rastreo del padre
 
   pid = np->pid;
 

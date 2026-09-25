@@ -115,23 +115,22 @@ sys_uptime(void)
 }
 
 
-// trace(const char *name)
-// Pide al kernel monitorear la syscall llamada `name` (ej: "sys_kill")
-// para este proceso y sus hijos.
-// Retorna 0 si tuvo exito, -1 si el nombre no es una syscall valida.
+//funcion que activa el rastreo de una syscall para el proceso actual
 uint64
 sys_trace(void)
 {
-  char name[16];
-  int n;
+  char name[16]; //nombre de la syscall que llega desde el usuario
+  int n;         //numero de esa syscall
 
-  if (argstr(0, name, sizeof(name)) < 0)   // copia segura de usuario a kernel
+  //argstr copia la cadena de forma segura desde el espacio de usuario
+  if (argstr(0, name, sizeof(name)) < 0)
     return -1;
 
+  //traduce el nombre a numero, -1 si el nombre no corresponde a una syscall
   if ((n = syscall_num_from_name(name)) < 0)
     return -1;
 
-  myproc()->tracing = n;
+  myproc()->tracing = n; //guarda el numero en el proceso actual
   return 0;
 }
 

@@ -26,7 +26,7 @@ char *sys_sbrk(int, int);
 int pause(int);
 int uptime(void);
 int sync(void);
-int trace(const char*);
+int trace(const char*); //funcion para activar el rastreo de una syscall
 int sysinfo(struct sysinfo *); //funcion para obtener info del sistema
 
 // ulib.c

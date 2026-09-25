@@ -43,7 +43,7 @@ entry("sbrk");
 entry("pause");
 entry("uptime");
 entry("sync");
-entry("trace");
+entry("trace"); #genera el stub en ensamblador de la syscall trace
 #------------------------------------------------------------------------------------------
 entry("sysinfo"); #funcion para obtener info del sistema
 #------------------------------------------------------------------------------------------
