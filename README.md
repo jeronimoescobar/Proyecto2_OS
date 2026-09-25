@@ -173,14 +173,3 @@ La consistencia del cálculo de páginas también se verificó:
 Used Pages + Available Pages = Total Pages
 200 + 32534 = 32734
 ```
-
-## Video de la entrega
-
-La demostración debe mostrar:
-
-1. una compilación limpia con `make`;
-2. el arranque de xv6 con QEMU;
-3. la ejecución de `trace` y la salida de la syscall rastreada;
-4. la ejecución de `sysinfo`;
-5. la comprobación visual de que los resultados corresponden a las
-	funcionalidades descritas.
